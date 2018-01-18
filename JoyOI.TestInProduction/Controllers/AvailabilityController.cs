@@ -1,16 +1,26 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
+using System.Net.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace JoyOI.TestInProduction.Controllers
 {
-    public class AvailabilityController : Controller
+    public class AvailabilityController : BaseController
     {
-        public IActionResult OnlineJudge()
+        public async Task<IActionResult> OnlineJudge()
         {
-            return View();
+            using (var client = new HttpClient() { BaseAddress = new Uri("http://www.joyoi.cn") })
+            using (var response = await client.GetAsync("/"))
+            {
+                if (response.StatusCode == System.Net.HttpStatusCode.OK)
+                {
+                    return Result(200, "Succeeded");
+                }
+                else
+                {
+                    return Result(500, "Failed");
+                }
+            }
         }
     }
 }
