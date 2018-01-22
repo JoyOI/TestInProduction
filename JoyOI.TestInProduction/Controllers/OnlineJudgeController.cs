@@ -21,7 +21,7 @@ namespace JoyOI.TestInProduction.Controllers
                 if (response.StatusCode == System.Net.HttpStatusCode.OK)
                 {
                     var result = JsonConvert.DeserializeObject<ApiResult<PagedResult<JudgeStatus>>>(await response.Content.ReadAsStringAsync());
-                    if (result.data.result.Count() > 5)
+                    if (result.data.result.Count() >= 5)
                     {
                         await TriggerIncidentAsync(new Incident
                         {
@@ -207,6 +207,56 @@ namespace JoyOI.TestInProduction.Controllers
                         title = "[OJ][评测功能][CODEVS] 每小时评测测试发生异常",
                         severity = 4,
                         body = "在本次生产环境中测试时，提交的CODEVS题库中的<A+B Problem>题目发生评测异常，获取评测结果超时\r\n\r\n评测记录：[" + judgeId + "](http://joyoi.org/judge/" + judgeId + ")"
+                    });
+
+                    return Result(200, "Succeeded");
+                }
+            }
+        }
+
+        public async Task<IActionResult> LeetCodeJudge()
+        {
+            using (var client = new HttpClient() { BaseAddress = new Uri("http://api.oj.joyoi.cn") })
+            using (var response = await client.PutAsync("/api/user/session", new StringContent(JsonConvert.SerializeObject(new
+            {
+                username = Startup.Config["OnlineJudge:Username"],
+                password = Startup.Config["OnlineJudge:Password"]
+            }))))
+            {
+                var result = JsonConvert.DeserializeObject<ApiResult<dynamic>>(await response.Content.ReadAsStringAsync());
+                string cookie = result.data.cookie;
+                client.DefaultRequestHeaders.Add("joyoi_cookie", cookie);
+                using (var res = await client.PutAsync("/api/judge", new StringContent("{\"problemId\":\"leetcode-two-sum\",\"isSelfTest\":false,\"code\":\"class Solution {\\r\\npublic:\\r\\n    vector<int> twoSum(vector<int>& nums, int target) {\\r\\n        unordered_map<int, int> m;\\r\\n        for (int i = 0; i < nums.size(); ++i) {\\r\\n            if (m.count(target - nums[i])) {\\r\\n                return {i, m[target - nums[i]]};\\r\\n            }\\r\\n            m[nums[i]] = i;\\r\\n        }\\r\\n        while(1);\\r\\n        return {};\\r\\n    }\\r\\n};\",\"language\":\"C++\",\"data\":null,\"contestId\":null}")))
+                {
+                    var judgeId = JsonConvert.DeserializeObject<ApiResult<Guid>>(await res.Content.ReadAsStringAsync()).data;
+                    var retry = 20;
+                    while (--retry >= 0)
+                    {
+                        var ret = await PullResultAsync(client, judgeId);
+                        if (ret == "Pending" || ret == "Running")
+                        {
+                            await Task.Delay(5000);
+                        }
+                        else if (ret != "Accepted")
+                        {
+                            await TriggerIncidentAsync(new Incident
+                            {
+                                title = "[OJ][评测功能][LeetCode] 每小时评测测试发生异常",
+                                severity = 4,
+                                body = "在本次生产环境中测试时，提交的LeetCode题库中的<Two Sum>题目发生评测异常，预期结果为Accepted，实际结果为" + ret + "\r\n\r\n评测记录：[" + judgeId + "](http://joyoi.org/judge/" + judgeId + ")"
+                            });
+                        }
+                        else
+                        {
+                            return Result(200, "Succeeded");
+                        }
+                    }
+
+                    await TriggerIncidentAsync(new Incident
+                    {
+                        title = "[OJ][评测功能][LeetCode] 每小时评测测试发生异常",
+                        severity = 4,
+                        body = "在本次生产环境中测试时，提交的LeetCode题库中的<Two Sum>题目发生评测异常，获取评测结果超时\r\n\r\n评测记录：[" + judgeId + "](http://joyoi.org/judge/" + judgeId + ")"
                     });
 
                     return Result(200, "Succeeded");
